@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, HTTPException
 from datetime import datetime
 from bson import ObjectId
@@ -7,6 +8,8 @@ from .models import entry_helper, project_helper
 from .configurations import db, entries_collection, projects_collection
 app = FastAPI(title="Time Tracker API")
 currentUser = "691c8bf8d691e46d00068bf3"
+
+RABBIT_URL = os.getenv("RABBIT_URL")
 
 #******************************entries endpoints****************************************
 #Get entry by id
@@ -70,7 +73,8 @@ def end_entry(entry_id: str):
         {"_id": ObjectId(entry_id)},
         {"$set": {"endtime": now, "duration": duration_seconds}}
     )
-    
+    #send a rabbit mq message to notifications service
+
     updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
     return entry_helper(updated_entry)
 
@@ -134,6 +138,7 @@ def list_entries_from_project(project_id: str):
 
 
 #********************project Managment*******************************
+#create project
 @app.put("/projects/", response_model=Project,status_code=201)
 def create_project(project: ProjectCreate):
     project_dict = {
@@ -141,6 +146,10 @@ def create_project(project: ProjectCreate):
         "description": project.description,
         "owner_id": ObjectId(currentUser)
     }
+
+    #send a message to nitifcation service via rabbitmq
+
+    
     result = projects_collection.insert_one(project_dict)
     created_project = projects_collection.find_one({"_id": result.inserted_id})
     return project_helper(created_project)
