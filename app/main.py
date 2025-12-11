@@ -1,7 +1,9 @@
 import os
+import aio_pika
 from fastapi import FastAPI, HTTPException
 from datetime import datetime
 from bson import ObjectId
+import json
 
 from .schemas import EntryStart, Entry, ProjectCreate, Project, EntryUpdate
 from .models import entry_helper, project_helper
@@ -9,7 +11,19 @@ from .configurations import db, entries_collection, projects_collection
 app = FastAPI(title="Time Tracker API")
 currentUser = "691c8bf8d691e46d00068bf3"
 
+
+#******************************RabbitMQ stuff******************************************
 RABBIT_URL = os.getenv("RABBIT_URL")
+EXCHANGE_NAME = "notificiations_topic"
+async def get_exchange():
+    """
+    Open a connection, create a channel and declare a topic exchange.
+    Returns (connection, channel, exchange).
+    """
+    conn = await aio_pika.connect_robust(RABBIT_URL)
+    ch = await conn.channel()
+    ex = await ch.declare_exchange(EXCHANGE_NAME, aio_pika.ExchangeType.TOPIC)
+    return conn, ch, ex
 
 #******************************entries endpoints****************************************
 #Get entry by id
@@ -56,7 +70,7 @@ def start_entry(entry: EntryStart):
 
 #complete a time entry
 @app.patch("/entries/{entry_id}", response_model=Entry, status_code=200)
-def end_entry(entry_id: str):
+async def end_entry(entry_id: str):
     entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
     
     if not entry:
@@ -73,9 +87,22 @@ def end_entry(entry_id: str):
         {"_id": ObjectId(entry_id)},
         {"$set": {"endtime": now, "duration": duration_seconds}}
     )
-    #send a rabbit mq message to notifications service
 
     updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
+
+    #send a rabbit mq message to notifications service
+    conn, ch, ex = await get_exchange()
+    msg_payload = {
+    "event_type": "entry.completed",
+    "user_id": currentUser,
+    "timestamp": datetime.now().isoformat(),
+    "data": entry_helper(updated_entry)
+    }
+    msg = aio_pika.Message(body=json.dumps(msg_payload).encode())
+
+    await ex.publish(msg, routing_key="entry.completed")
+    await conn.close()
+
     return entry_helper(updated_entry)
 
 #update a time entry. Name and project it belongs to
