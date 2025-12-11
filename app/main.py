@@ -4,7 +4,8 @@ from fastapi import FastAPI, HTTPException
 from datetime import datetime
 from bson import ObjectId
 import json
-
+from dotenv import load_dotenv
+load_dotenv()
 from .schemas import EntryStart, Entry, ProjectCreate, Project, EntryUpdate
 from .models import entry_helper, project_helper
 from .configurations import db, entries_collection, projects_collection
