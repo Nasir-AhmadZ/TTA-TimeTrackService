@@ -92,14 +92,13 @@ async def end_entry(entry_id: str):
     updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
 
     #send a rabbit mq message to notifications service
-    conn, ch, ex = await get_exchange()
-    msg_payload = {
-    "event_type": "entry.completed",
-    "user_id": currentUser,
-    "timestamp": datetime.now().isoformat(),
-    "data": entry_helper(updated_entry)
-    }
-    msg = aio_pika.Message(body=json.dumps(msg_payload).encode())
+    await createNotification(
+        event_type="entry.completed",
+        user_id=currentUser,
+        routing_key="entry.completed",
+        data=entry_helper(updated_entry)
+    )
+
 
     await ex.publish(msg, routing_key="entry.completed")
     await conn.close()
@@ -229,6 +228,19 @@ def delete_project_and_entries_helper(project_id: str):
     projects_collection.delete_one({"_id": ObjectId(project_id)})
 
     return 1
+
+
+async def createNotification(event_type: str, user_id: str, routing_key: str, data: dict):
+    conn, ch, ex = await get_exchange()
+    msg_payload = {
+        "event_type": event_type,
+        "user_id": user_id,
+        "timestamp": datetime.now().isoformat(),
+        "data": data
+    }
+    msg = aio_pika.Message(body=json.dumps(msg_payload).encode())
+    await ex.publish(msg, routing_key=routing_key)
+    await conn.close()
 
 
 # python -m uvicorn app.main:app --reload
