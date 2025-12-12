@@ -50,7 +50,7 @@ def delete_entry_by_id(entry_id: str):
 
 #start a time entry using put
 @app.put("/entries/", response_model=Entry,status_code=201)
-def start_entry(entry: EntryStart):
+async def start_entry(entry: EntryStart):
     now = datetime.now()
     entry_dict = {
         "name": entry.name,
@@ -67,6 +67,16 @@ def start_entry(entry: EntryStart):
     
     result = entries_collection.insert_one(entry_dict)
     created_entry = entries_collection.find_one({"_id": result.inserted_id})
+
+    #send a message to nitifcation service via rabbitmq
+    #send a rabbit mq message to notifications service
+    await createNotification(
+        event_type="entry.running",
+        user_id=currentUser,
+        routing_key="entry.running",
+        data=entry_helper(created_entry)
+    )
+
     return entry_helper(created_entry)
 
 #complete a time entry
@@ -99,15 +109,11 @@ async def end_entry(entry_id: str):
         data=entry_helper(updated_entry)
     )
 
-
-    await ex.publish(msg, routing_key="entry.completed")
-    await conn.close()
-
     return entry_helper(updated_entry)
 
 #update a time entry. Name and project it belongs to
 @app.patch("/entries/update/{entry_id}", response_model=dict, status_code=200)
-def update_entry(entry_id: str, updatedEntry: EntryUpdate):
+async def update_entry(entry_id: str, updatedEntry: EntryUpdate):
     # Find existing entry
     entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
     if not entry:
@@ -130,8 +136,19 @@ def update_entry(entry_id: str, updatedEntry: EntryUpdate):
             {"_id": ObjectId(entry_id)},
             {"$set": update_data}
         )
+        
+        updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
+        
+        #send a message to notifcation service via rabbitmq
+        await createNotification(
+            event_type="entry.updated",
+            user_id=currentUser,
+            routing_key="entry.updated",
+            data=entry_helper(updated_entry)
+        )
+    else:
+        updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
 
-    updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
     return entry_helper(updated_entry)
 
 # List all entries
@@ -167,18 +184,26 @@ def list_entries_from_project(project_id: str):
 #********************project Managment*******************************
 #create project
 @app.put("/projects/", response_model=Project,status_code=201)
-def create_project(project: ProjectCreate):
+async def create_project(project: ProjectCreate):
     project_dict = {
         "name": project.name,
         "description": project.description,
         "owner_id": ObjectId(currentUser)
     }
-
-    #send a message to nitifcation service via rabbitmq
-
     
     result = projects_collection.insert_one(project_dict)
     created_project = projects_collection.find_one({"_id": result.inserted_id})
+
+    #send a message to nitifcation service via rabbitmq
+    #send a rabbit mq message to notifications service
+
+    await createNotification(
+        event_type="project.created",
+        user_id=currentUser,
+        routing_key="project.created",
+        data=project_helper(created_project)
+    )
+
     return project_helper(created_project)
 
 # list all projects
