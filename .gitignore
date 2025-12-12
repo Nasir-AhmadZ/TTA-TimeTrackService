@@ -2,3 +2,6 @@ __pycache__/
 .ipynb_checkpoints/
 *.pyc
 venv/
+.terraform*
+terraform.tfstate*
+.env
