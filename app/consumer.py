@@ -57,7 +57,7 @@ async def consume():
                                 event_type = payload.get("event_type")
                                 data = payload.get("data")
 
-                                if event_type == "user_login":
+                                if event_type == "user_login": # on user login event, set currentUser
                                     user_id = payload.get("user_id")
                                     if not user_id and isinstance(data, dict):
                                         user_id = data.get("user_id")
@@ -66,7 +66,7 @@ async def consume():
                                         currentUser = user_id
                                         print("Set currentUser=", currentUser)
                                 
-                                if event_type == "user_logout":
+                                if event_type == "user_logout": # on user logout event, clear currentUser
                                     user_id = payload.get("user_id")
                                     if not user_id and isinstance(data, dict):
                                         user_id = data.get("user_id")
@@ -75,7 +75,7 @@ async def consume():
                                         currentUser = "691c8bf8d691e46d00068bf3" #default user
                                         print("user logged out\nSet default currentUser=", currentUser)
 
-                                if event_type == "user_deletion":
+                                if event_type == "user_deletion":  # on user deletion event, clear currentUser
                                     user_id = payload.get("user_id")
                                     if not user_id and isinstance(data, dict):
                                         user_id = data.get("user_id")
