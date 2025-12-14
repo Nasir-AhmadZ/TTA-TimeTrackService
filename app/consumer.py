@@ -12,10 +12,14 @@ RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 QUEUE_NAME = os.getenv("QUEUE_NAME", "user_events_queue")
 USE_EXCHANGE = os.getenv("USE_EXCHANGE", "true").lower() in ("1", "true", "yes")
 
+
+currentUser = None
+
 if not RABBITMQ_URL:
     raise RuntimeError("RABBITMQ_URL is not set. Export it or add it to a .env file.")
 
 async def consume():
+    global currentUser
     print(f"Connecting to RabbitMQ at {RABBITMQ_URL}")
     connection = await aio_pika.connect(RABBITMQ_URL)
 
@@ -45,8 +49,44 @@ async def consume():
                                 raw = raw.decode("utf-8")
 
                             payload = json.loads(raw)
-                            event_type = payload.get("event_type") if isinstance(payload, dict) else None
-                            data = payload.get("data") if isinstance(payload, dict) else None #gets the data from the payload
+
+                            user_id = None
+                            event_type = None
+                            data = None
+                            if isinstance(payload, dict):
+                                event_type = payload.get("event_type")
+                                data = payload.get("data")
+
+                                if event_type == "user_login":
+                                    user_id = payload.get("user_id")
+                                    if not user_id and isinstance(data, dict):
+                                        user_id = data.get("user_id")
+
+                                    if user_id:
+                                        currentUser = user_id
+                                        print("Set currentUser=", currentUser)
+                                
+                                if event_type == "user_logout":
+                                    user_id = payload.get("user_id")
+                                    if not user_id and isinstance(data, dict):
+                                        user_id = data.get("user_id")
+
+                                    if user_id:
+                                        currentUser = "691c8bf8d691e46d00068bf3" #default user
+                                        print("user logged out\nSet default currentUser=", currentUser)
+
+                                if event_type == "user_deletion":
+                                    user_id = payload.get("user_id")
+                                    if not user_id and isinstance(data, dict):
+                                        user_id = data.get("user_id")
+
+                                    if user_id:
+                                        currentUser = "691c8bf8d691e46d00068bf3" #default user
+                                        print("user deleted\nSet default currentUser=", currentUser)
+
+
+                                    
+
                             print("Received event=", event_type, "data=", data)
                         except json.JSONDecodeError as e:
                             print("Invalid JSON in message body:", e)
