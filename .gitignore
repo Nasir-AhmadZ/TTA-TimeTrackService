@@ -4,6 +4,5 @@ __pycache__/
 venv/
 .terraform*
 terraform.tfstate*
-.env
 .coverage
 .pytest_cache/
