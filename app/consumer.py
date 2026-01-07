@@ -95,7 +95,6 @@ async def consume():
         except asyncio.CancelledError:
             print("Consumer cancelled")
 
-
 if __name__ == "__main__":
     try:
         asyncio.run(consume())
