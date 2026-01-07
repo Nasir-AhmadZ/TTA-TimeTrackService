@@ -9,8 +9,9 @@ load_dotenv()
 from .schemas import EntryStart, Entry, ProjectCreate, Project, EntryUpdate
 from .models import entry_helper, project_helper
 from .configurations import db, entries_collection, projects_collection
+from . import consumer
 app = FastAPI(title="Time Tracker API")
-currentUser = "691c8bf8d691e46d00068bf3"
+#currentUser = "691c8bf8d691e46d00068bf3"
 
 
 #******************************RabbitMQ stuff******************************************
@@ -72,7 +73,7 @@ async def start_entry(entry: EntryStart):
     #send a rabbit mq message to notifications service
     await createNotification(
         event_type="entry.running",
-        user_id=currentUser,
+        user_id=consumer.currentUser,
         routing_key="entry.running",
         data=entry_helper(created_entry)
     )
@@ -104,7 +105,7 @@ async def end_entry(entry_id: str):
     #send a rabbit mq message to notifications service
     await createNotification(
         event_type="entry.completed",
-        user_id=currentUser,
+        user_id=consumer.currentUser,
         routing_key="entry.completed",
         data=entry_helper(updated_entry)
     )
@@ -142,7 +143,7 @@ async def update_entry(entry_id: str, updatedEntry: EntryUpdate):
         #send a message to notifcation service via rabbitmq
         await createNotification(
             event_type="entry.updated",
-            user_id=currentUser,
+            user_id=consumer.currentUser,
             routing_key="entry.updated",
             data=entry_helper(updated_entry)
         )
@@ -188,7 +189,7 @@ async def create_project(project: ProjectCreate):
     project_dict = {
         "name": project.name,
         "description": project.description,
-        "owner_id": ObjectId(currentUser)
+        "owner_id": ObjectId(consumer.currentUser)
     }
     
     result = projects_collection.insert_one(project_dict)
@@ -199,7 +200,7 @@ async def create_project(project: ProjectCreate):
 
     await createNotification(
         event_type="project.created",
-        user_id=currentUser,
+        user_id=consumer.currentUser,
         routing_key="project.created",
         data=project_helper(created_project)
     )
@@ -215,7 +216,7 @@ def list_projects():
 #list projects belongin to the current user
 @app.get("/projects/user", response_model=list[Project],status_code=200)
 def list_users_projects():
-    projects = projects_collection.find({"owner_id": ObjectId(currentUser)})
+    projects = projects_collection.find({"owner_id": ObjectId(consumer.currentUser)})
     return [project_helper(p) for p in projects]
 
 #delete a project and all its entries
@@ -229,7 +230,7 @@ def delete_project_and_entries(project_id: str):
 def delete_users_projects():
 
 #list projects belongin to the current user
-    projects = projects_collection.find({"owner_id": ObjectId(currentUser)})
+    projects = projects_collection.find({"owner_id": ObjectId(consumer.currentUser)})
     for p in projects:
         delete_project_and_entries_helper(str(p["_id"]))
 

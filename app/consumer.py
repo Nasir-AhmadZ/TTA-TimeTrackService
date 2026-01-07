@@ -13,7 +13,7 @@ QUEUE_NAME = os.getenv("QUEUE_NAME", "user_events_queue")
 USE_EXCHANGE = os.getenv("USE_EXCHANGE", "true").lower() in ("1", "true", "yes")
 
 
-currentUser = None
+currentUser = "691c8bf8d691e46d00068bf3" # default user id as string
 
 if not RABBITMQ_URL:
     raise RuntimeError("RABBITMQ_URL is not set. Export it or add it to a .env file.")
