@@ -36,11 +36,54 @@ class RabbitMQPublisher:
         except Exception as e:
             print(f"ERROR: Failed to close RabbitMQ connection: {e}")
 
+    # def publish_event(self, event_type: str, routing_key: str, currentUser: str, data: Dict[str, Any]) -> bool:
+    #     try:
+    #         if not self.channel or self.connection.is_closed:
+    #             if not self.connect():
+    #                 return False
+            
+    #         message = {
+    #             "event_type": event_type,
+    #             "currentUser": currentUser,
+    #             "timestamp": datetime.now().isoformat(),
+    #             "data": data
+    #         }
+
+    #         #pulish message to queue 
+    #         self.channel.basic_publish(
+    #             exchange='notificiations_topic',
+    #             routing_key=routing_key,
+    #             body=json.dumps(message),
+    #             properties=pika.BasicProperties(
+    #                 delivery_mode=2,# make message persistent
+    #                 content_type='application/json'                  
+    #             )
+    #         )
+
+    #         print(f"Published event: {event_type}")
+    #         return True
+
+    #     except Exception as e:
+    #         print(f"ERROR: Failed to publish event {event_type}: {e}")
+    #         # Attempt to reconnect once
+    #         try:
+    #             self.close()
+    #             self.connect()
+    #         except:
+    #             pass
+    #         return False
     def publish_event(self, event_type: str, routing_key: str, currentUser: str, data: Dict[str, Any]) -> bool:
         try:
-            if not self.channel or self.connection.is_closed:
-                if not self.connect():
-                    return False
+            # Always create fresh connection for each publish
+            if not self.rabbitmq_url:
+                print("WARNING: RABBIT_URL not set; skipping RabbitMQ connection")
+                return False
+
+            params = pika.URLParameters(self.rabbitmq_url)
+            connection = pika.BlockingConnection(params)
+            channel = connection.channel()
+            
+            channel.exchange_declare(exchange='notificiations_topic', exchange_type='topic')
             
             message = {
                 "event_type": event_type,
@@ -49,28 +92,22 @@ class RabbitMQPublisher:
                 "data": data
             }
 
-            #pulish message to queue 
-            self.channel.basic_publish(
+            channel.basic_publish(
                 exchange='notificiations_topic',
                 routing_key=routing_key,
                 body=json.dumps(message),
                 properties=pika.BasicProperties(
-                    delivery_mode=2,# make message persistent
+                    delivery_mode=2,
                     content_type='application/json'                  
                 )
             )
 
+            connection.close()
             print(f"Published event: {event_type}")
             return True
 
         except Exception as e:
             print(f"ERROR: Failed to publish event {event_type}: {e}")
-            # Attempt to reconnect once
-            try:
-                self.close()
-                self.connect()
-            except:
-                pass
             return False
 
 
