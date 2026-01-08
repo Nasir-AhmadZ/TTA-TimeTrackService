@@ -11,6 +11,7 @@ load_dotenv()
 from .schemas import EntryStart, Entry, ProjectCreate, Project, EntryUpdate
 from .models import entry_helper, project_helper
 from .configurations import db, entries_collection, projects_collection
+from fastapi.middleware.cors import CORSMiddleware
 from . import consumer
 app = FastAPI(title="Time Tracker API")
 #currentUser = "691c8bf8d691e46d00068bf3"
@@ -58,6 +59,14 @@ async def lifespan(app: FastAPI):
             print("ERROR: Error while closing RabbitMQ connection")
 
 app = FastAPI(title="Time Tracker API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 #******************************entries endpoints****************************************
 #Get entry by id
