@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from datetime import datetime
 from bson import ObjectId
 import json
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 load_dotenv()
 from .schemas import EntryStart, Entry, ProjectCreate, Project, EntryUpdate
@@ -14,19 +15,33 @@ from . import consumer
 app = FastAPI(title="Time Tracker API")
 #currentUser = "691c8bf8d691e46d00068bf3"
 
+from .rabbitmq_publisher import get_rabbitmq_publisher
 
 #******************************RabbitMQ stuff******************************************
-RABBIT_URL = os.getenv("RABBIT_URL")
-EXCHANGE_NAME = "notificiations_topic"
-async def get_exchange():
-    """
-    Open a connection, create a channel and declare a topic exchange.
-    Returns (connection, channel, exchange).
-    """
-    conn = await aio_pika.connect_robust(RABBIT_URL)
-    ch = await conn.channel()
-    ex = await ch.declare_exchange(EXCHANGE_NAME, aio_pika.ExchangeType.TOPIC)
-    return conn, ch, ex
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup Connect to RabbitMQ
+    publisher = get_rabbitmq_publisher()
+    try:
+        connected = publisher.connect()
+        if not connected:
+            print("WARNING: RabbitMQ not connected at startup; continuing without publisher")
+    except Exception:
+        print("ERROR: Unexpected error while connecting to RabbitMQ; continuing without publisher")
+        connected = False
+
+    try:
+        yield
+    finally:
+        # Shutdown close RabbitMQ connection if it was established
+        try:
+            if connected:
+                publisher.close()
+        except Exception:
+            print("ERROR: Error while closing RabbitMQ connection")
+
+app = FastAPI(title="Time Tracker API", lifespan=lifespan)
+currentUser = "691c8bf8d691e46d00068bf3"
 
 
 @app.on_event("startup")
@@ -84,11 +99,12 @@ async def start_entry(entry: EntryStart):
 
     #send a message to nitifcation service via rabbitmq
     #send a rabbit mq message to notifications service
-    await createNotification(
-        event_type="entry.running",
-        user_id=consumer.currentUser,
-        routing_key="entry.running",
-        data=entry_helper(created_entry)
+    publisher = get_rabbitmq_publisher()
+    publisher.createNotification(
+        "entry.running",
+        consumer.currentUser,
+        "entry.running",
+        entry_helper(created_entry)
     )
 
     return entry_helper(created_entry)
@@ -116,11 +132,12 @@ async def end_entry(entry_id: str):
     updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
 
     #send a rabbit mq message to notifications service
-    await createNotification(
-        event_type="entry.completed",
-        user_id=consumer.currentUser,
-        routing_key="entry.completed",
-        data=entry_helper(updated_entry)
+    publisher = get_rabbitmq_publisher()
+    publisher.createNotification(
+        "entry.completed",
+        consumer.currentUser,
+        "entry.completed",
+        entry_helper(updated_entry)
     )
 
     return entry_helper(updated_entry)
@@ -154,11 +171,12 @@ async def update_entry(entry_id: str, updatedEntry: EntryUpdate):
         updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
         
         #send a message to notifcation service via rabbitmq
-        await createNotification(
-            event_type="entry.updated",
-            user_id=consumer.currentUser,
-            routing_key="entry.updated",
-            data=entry_helper(updated_entry)
+        publisher = get_rabbitmq_publisher()
+        publisher.createNotification(    
+            "entry.updated",
+            consumer.currentUser,
+            "entry.updated",
+            entry_helper(updated_entry)
         )
     else:
         updated_entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
@@ -211,11 +229,12 @@ async def create_project(project: ProjectCreate):
     #send a message to nitifcation service via rabbitmq
     #send a rabbit mq message to notifications service
 
-    await createNotification(
-        event_type="project.created",
-        user_id=consumer.currentUser,
-        routing_key="project.created",
-        data=project_helper(created_project)
+    publisher = get_rabbitmq_publisher()
+    publisher.createNotification(
+        "project.created",
+        consumer.currentUser,
+        "project.created",
+        project_helper(created_project)
     )
 
     return project_helper(created_project)
@@ -267,19 +286,5 @@ def delete_project_and_entries_helper(project_id: str):
     projects_collection.delete_one({"_id": ObjectId(project_id)})
 
     return 1
-
-
-async def createNotification(event_type: str, user_id: str, routing_key: str, data: dict):
-    conn, ch, ex = await get_exchange()
-    msg_payload = {
-        "event_type": event_type,
-        "user_id": user_id,
-        "timestamp": datetime.now().isoformat(),
-        "data": data
-    }
-    msg = aio_pika.Message(body=json.dumps(msg_payload).encode())
-    await ex.publish(msg, routing_key=routing_key)
-    await conn.close()
-
 
 # python -m uvicorn app.main:app --reload
