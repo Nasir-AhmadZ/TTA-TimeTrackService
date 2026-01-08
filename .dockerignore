@@ -3,3 +3,4 @@ aws-tf/
 .terraform/
 .github/
 .devcontainer/
+__pycache__/
