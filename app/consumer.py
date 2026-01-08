@@ -11,18 +11,16 @@ load_dotenv()
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 QUEUE_NAME = os.getenv("QUEUE_NAME", "user_events_queue")
-USE_EXCHANGE = os.getenv("USE_EXCHANGE", "true").lower() in ("1", "true", "yes")
-EXCHANGE_NAME = os.getenv("EXCHANGE_NAME", "user_events")
-ROUTING_KEY = os.getenv("ROUTING_KEY", "#")
 
 
-currentUser = "691c8bf8d691e46d00068bf3" # default user id as string
+#currentUser = "691c8bf8d691e46d00068bf3" # default user id as string
 
 if not RABBITMQ_URL:
     raise RuntimeError("RABBITMQ_URL is not set. Export it or add it to a .env file.")
 
 async def _consume_once():
-    global currentUser
+    global currentUser 
+    currentUser =   "691c8bf8d691e46d00068bf3"
     print(f"Connecting to RabbitMQ at {RABBITMQ_URL}")
     connection = await aio_pika.connect(RABBITMQ_URL)
 
@@ -30,25 +28,8 @@ async def _consume_once():
         channel = await connection.channel()
         await channel.set_qos(prefetch_count=1)
 
+        # Declare queue - login service publishes directly to this queue via default exchange
         queue = await channel.declare_queue(QUEUE_NAME, durable=True)
-
-        if USE_EXCHANGE:
-            exchange = None
-            try:
-                # Try to reuse an existing exchange first to avoid precondition conflicts
-                exchange = await channel.get_exchange(EXCHANGE_NAME, ensure=True)
-            except Exception:
-                exchange = await channel.declare_exchange(
-                    EXCHANGE_NAME, ExchangeType.TOPIC, durable=True
-                )
-
-            try:
-                await queue.bind(exchange, routing_key=ROUTING_KEY)
-                print(
-                    f"Bound queue '{QUEUE_NAME}' to exchange '{EXCHANGE_NAME}' with routing key '{ROUTING_KEY}'"
-                )
-            except Exception as exc:
-                print(f"Failed to bind queue '{QUEUE_NAME}' to exchange '{EXCHANGE_NAME}':", exc)
 
         print(f"Waiting for messages on '{QUEUE_NAME}'...")
 
