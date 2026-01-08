@@ -1,4 +1,5 @@
 import aio_pika
+from aio_pika import ExchangeType
 import aiormq
 import asyncio
 import json
@@ -11,14 +12,16 @@ load_dotenv()
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 QUEUE_NAME = os.getenv("QUEUE_NAME", "user_events_queue")
 USE_EXCHANGE = os.getenv("USE_EXCHANGE", "true").lower() in ("1", "true", "yes")
+EXCHANGE_NAME = os.getenv("EXCHANGE_NAME", "user_events")
+ROUTING_KEY = os.getenv("ROUTING_KEY", "#")
 
 
-currentUser = None
+currentUser = "691c8bf8d691e46d00068bf3" # default user id as string
 
 if not RABBITMQ_URL:
     raise RuntimeError("RABBITMQ_URL is not set. Export it or add it to a .env file.")
 
-async def consume():
+async def _consume_once():
     global currentUser
     print(f"Connecting to RabbitMQ at {RABBITMQ_URL}")
     connection = await aio_pika.connect(RABBITMQ_URL)
@@ -30,12 +33,22 @@ async def consume():
         queue = await channel.declare_queue(QUEUE_NAME, durable=True)
 
         if USE_EXCHANGE:
-            
+            exchange = None
             try:
-                await queue.bind("user_events")
-                print(f"Bound queue '{QUEUE_NAME}' to exchange name 'user_events' (no redeclare)")
+                # Try to reuse an existing exchange first to avoid precondition conflicts
+                exchange = await channel.get_exchange(EXCHANGE_NAME, ensure=True)
+            except Exception:
+                exchange = await channel.declare_exchange(
+                    EXCHANGE_NAME, ExchangeType.TOPIC, durable=True
+                )
+
+            try:
+                await queue.bind(exchange, routing_key=ROUTING_KEY)
+                print(
+                    f"Bound queue '{QUEUE_NAME}' to exchange '{EXCHANGE_NAME}' with routing key '{ROUTING_KEY}'"
+                )
             except Exception as exc:
-                print("Failed to bind to exchange name 'user_events'; continuing to listen to queue only:", exc)
+                print(f"Failed to bind queue '{QUEUE_NAME}' to exchange '{EXCHANGE_NAME}':", exc)
 
         print(f"Waiting for messages on '{QUEUE_NAME}'...")
 
@@ -57,7 +70,7 @@ async def consume():
                                 event_type = payload.get("event_type")
                                 data = payload.get("data")
 
-                                if event_type == "user_login":
+                                if event_type == "user_login": # on user login event, set currentUser
                                     user_id = payload.get("user_id")
                                     if not user_id and isinstance(data, dict):
                                         user_id = data.get("user_id")
@@ -66,7 +79,7 @@ async def consume():
                                         currentUser = user_id
                                         print("Set currentUser=", currentUser)
                                 
-                                if event_type == "user_logout":
+                                if event_type == "user_logout": # on user logout event, clear currentUser
                                     user_id = payload.get("user_id")
                                     if not user_id and isinstance(data, dict):
                                         user_id = data.get("user_id")
@@ -75,7 +88,7 @@ async def consume():
                                         currentUser = "691c8bf8d691e46d00068bf3" #default user
                                         print("user logged out\nSet default currentUser=", currentUser)
 
-                                if event_type == "user_deletion":
+                                if event_type == "user_deletion":  # on user deletion event, clear currentUser
                                     user_id = payload.get("user_id")
                                     if not user_id and isinstance(data, dict):
                                         user_id = data.get("user_id")
@@ -85,8 +98,6 @@ async def consume():
                                         print("user deleted\nSet default currentUser=", currentUser)
 
 
-                                    
-
                             print("Received event=", event_type, "data=", data)
                         except json.JSONDecodeError as e:
                             print("Invalid JSON in message body:", e)
@@ -94,6 +105,17 @@ async def consume():
                             print("Failed to process message:", e)
         except asyncio.CancelledError:
             print("Consumer cancelled")
+
+async def consume():
+    # Keep the consumer alive even if the connection drops; useful when running inside uvicorn
+    while True:
+        try:
+            await _consume_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            print(f"Consumer loop error: {exc}; retrying in 5s")
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
     try:

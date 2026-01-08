@@ -1,4 +1,5 @@
 import os
+import asyncio
 import aio_pika
 from fastapi import FastAPI, HTTPException
 from datetime import datetime
@@ -10,13 +11,19 @@ load_dotenv()
 from .schemas import EntryStart, Entry, ProjectCreate, Project, EntryUpdate
 from .models import entry_helper, project_helper
 from .configurations import db, entries_collection, projects_collection
+from . import consumer
+app = FastAPI(title="Time Tracker API")
+#currentUser = "691c8bf8d691e46d00068bf3"
+
 from .rabbitmq_publisher import get_rabbitmq_publisher
 
 #******************************RabbitMQ stuff******************************************
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup Connect to RabbitMQ
     publisher = get_rabbitmq_publisher()
+    consumer_task = None
+
+    # Startup
     try:
         connected = publisher.connect()
         if not connected:
@@ -25,10 +32,25 @@ async def lifespan(app: FastAPI):
         print("ERROR: Unexpected error while connecting to RabbitMQ; continuing without publisher")
         connected = False
 
+    # Start the consumer within lifespan so it reliably runs under uvicorn
+    try:
+        print("Starting RabbitMQ consumer task")
+        consumer_task = asyncio.create_task(consumer.consume())
+        app.state.consumer_task = consumer_task
+    except Exception as e:
+        print(f"ERROR: Failed to start consumer task: {e}")
+
     try:
         yield
     finally:
-        # Shutdown close RabbitMQ connection if it was established
+        # Shutdown: cancel consumer and close RabbitMQ publisher connection
+        try:
+            task = getattr(app.state, "consumer_task", None)
+            if task:
+                task.cancel()
+        except Exception:
+            print("ERROR: Error while cancelling consumer task")
+
         try:
             if connected:
                 publisher.close()
@@ -36,7 +58,6 @@ async def lifespan(app: FastAPI):
             print("ERROR: Error while closing RabbitMQ connection")
 
 app = FastAPI(title="Time Tracker API", lifespan=lifespan)
-currentUser = "691c8bf8d691e46d00068bf3"
 
 #******************************entries endpoints****************************************
 #Get entry by id
@@ -85,7 +106,7 @@ async def start_entry(entry: EntryStart):
     publisher = get_rabbitmq_publisher()
     publisher.createNotification(
         "entry.running",
-        currentUser,
+        consumer.currentUser,
         "entry.running",
         entry_helper(created_entry)
     )
@@ -118,7 +139,7 @@ async def end_entry(entry_id: str):
     publisher = get_rabbitmq_publisher()
     publisher.createNotification(
         "entry.completed",
-        currentUser,
+        consumer.currentUser,
         "entry.completed",
         entry_helper(updated_entry)
     )
@@ -157,7 +178,7 @@ async def update_entry(entry_id: str, updatedEntry: EntryUpdate):
         publisher = get_rabbitmq_publisher()
         publisher.createNotification(    
             "entry.updated",
-            currentUser,
+            consumer.currentUser,
             "entry.updated",
             entry_helper(updated_entry)
         )
@@ -203,7 +224,7 @@ async def create_project(project: ProjectCreate):
     project_dict = {
         "name": project.name,
         "description": project.description,
-        "owner_id": ObjectId(currentUser)
+        "owner_id": ObjectId(consumer.currentUser)
     }
     
     result = projects_collection.insert_one(project_dict)
@@ -215,7 +236,7 @@ async def create_project(project: ProjectCreate):
     publisher = get_rabbitmq_publisher()
     publisher.createNotification(
         "project.created",
-        currentUser,
+        consumer.currentUser,
         "project.created",
         project_helper(created_project)
     )
@@ -231,7 +252,7 @@ def list_projects():
 #list projects belongin to the current user
 @app.get("/projects/user", response_model=list[Project],status_code=200)
 def list_users_projects():
-    projects = projects_collection.find({"owner_id": ObjectId(currentUser)})
+    projects = projects_collection.find({"owner_id": ObjectId(consumer.currentUser)})
     return [project_helper(p) for p in projects]
 
 #delete a project and all its entries
@@ -245,7 +266,7 @@ def delete_project_and_entries(project_id: str):
 def delete_users_projects():
 
 #list projects belongin to the current user
-    projects = projects_collection.find({"owner_id": ObjectId(currentUser)})
+    projects = projects_collection.find({"owner_id": ObjectId(consumer.currentUser)})
     for p in projects:
         delete_project_and_entries_helper(str(p["_id"]))
 
@@ -270,4 +291,3 @@ def delete_project_and_entries_helper(project_id: str):
 
     return 1
 
-# python -m uvicorn app.main:app --reload
