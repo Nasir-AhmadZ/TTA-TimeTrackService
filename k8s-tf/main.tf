@@ -67,7 +67,20 @@ resource "kubernetes_deployment" "nginx" {
           name  = "ttatrackcontainer"
 
           port {
-            container_port = 8001
+            container_port = 8002
+          }
+
+          env {
+            name = "RABBITMQ_URL"
+            value = "amqps://zhdjasig:JGheqoloLZdZyiIx41xN1zgDPOYCarQI@collie.lmq.cloudamqp.com/zhdjasig"
+          }
+          env {
+            name = "RABBIT_URL"
+            value = "amqps://dawzqycu:Gbcocn8dbUVYY8sFLjVVkFu3ZIVfkC2B@hawk.rmq.cloudamqp.com/dawzqycu"
+          }
+          env {
+            name = "MONGO_URI"
+            value = "mongodb+srv://User:Password@cluster0.82ogu5x.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
           }
 
           resources {
@@ -95,8 +108,8 @@ resource "kubernetes_service" "nginx" {
       App = kubernetes_deployment.nginx.spec.0.template.0.metadata[0].labels.App
     }
     port {
-      port        = 8001
-      target_port = 8001
+      port        = 8002
+      target_port = 8002
     }
 
     type = "LoadBalancer"
