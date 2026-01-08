@@ -34,7 +34,3 @@ jobs:
           load: true
           tags: mcarroll321/tta-tg:latest
           push: true
-      
-      - name: Inspect
-        run: |
-          docker image inspect mcarroll321/tta-tts:latest
