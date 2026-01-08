@@ -20,8 +20,10 @@ from .rabbitmq_publisher import get_rabbitmq_publisher
 #******************************RabbitMQ stuff******************************************
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup Connect to RabbitMQ
     publisher = get_rabbitmq_publisher()
+    consumer_task = None
+
+    # Startup
     try:
         connected = publisher.connect()
         if not connected:
@@ -30,10 +32,25 @@ async def lifespan(app: FastAPI):
         print("ERROR: Unexpected error while connecting to RabbitMQ; continuing without publisher")
         connected = False
 
+    # Start the consumer within lifespan so it reliably runs under uvicorn
+    try:
+        print("Starting RabbitMQ consumer task")
+        consumer_task = asyncio.create_task(consumer.consume())
+        app.state.consumer_task = consumer_task
+    except Exception as e:
+        print(f"ERROR: Failed to start consumer task: {e}")
+
     try:
         yield
     finally:
-        # Shutdown close RabbitMQ connection if it was established
+        # Shutdown: cancel consumer and close RabbitMQ publisher connection
+        try:
+            task = getattr(app.state, "consumer_task", None)
+            if task:
+                task.cancel()
+        except Exception:
+            print("ERROR: Error while cancelling consumer task")
+
         try:
             if connected:
                 publisher.close()
@@ -41,19 +58,6 @@ async def lifespan(app: FastAPI):
             print("ERROR: Error while closing RabbitMQ connection")
 
 app = FastAPI(title="Time Tracker API", lifespan=lifespan)
-currentUser = "691c8bf8d691e46d00068bf3"
-
-
-@app.on_event("startup")
-async def start_consumer_task():
-    app.state.consumer_task = asyncio.create_task(consumer.consume())#Kick off the RabbitMQ consumer when the app starts.
-
-
-@app.on_event("shutdown")
-async def stop_consumer_task():
-    task = getattr(app.state, "consumer_task", None)#Cancel the consumer task gracefully on shutdown
-    if task:
-        task.cancel()
 
 #******************************entries endpoints****************************************
 #Get entry by id
@@ -287,4 +291,3 @@ def delete_project_and_entries_helper(project_id: str):
 
     return 1
 
-# python -m uvicorn app.main:app --reload
