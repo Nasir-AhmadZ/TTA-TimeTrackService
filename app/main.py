@@ -31,14 +31,12 @@ async def get_exchange():
 
 @app.on_event("startup")
 async def start_consumer_task():
-    """Kick off the RabbitMQ consumer when the app starts."""
-    app.state.consumer_task = asyncio.create_task(consumer.consume())
+    app.state.consumer_task = asyncio.create_task(consumer.consume())#Kick off the RabbitMQ consumer when the app starts.
 
 
 @app.on_event("shutdown")
 async def stop_consumer_task():
-    """Cancel the consumer task gracefully on shutdown."""
-    task = getattr(app.state, "consumer_task", None)
+    task = getattr(app.state, "consumer_task", None)#Cancel the consumer task gracefully on shutdown
     if task:
         task.cancel()
 
