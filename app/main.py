@@ -1,6 +1,7 @@
 import os
 import aio_pika
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 from bson import ObjectId
 import json
@@ -37,6 +38,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Time Tracker API", lifespan=lifespan)
 currentUser = "691c8bf8d691e46d00068bf3"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 #******************************entries endpoints****************************************
 #Get entry by id
@@ -203,7 +212,7 @@ async def create_project(project: ProjectCreate):
     project_dict = {
         "name": project.name,
         "description": project.description,
-        "owner_id": ObjectId(currentUser)
+        "owner_id": project.owner_id
     }
     
     result = projects_collection.insert_one(project_dict)
@@ -215,7 +224,7 @@ async def create_project(project: ProjectCreate):
     publisher = get_rabbitmq_publisher()
     publisher.createNotification(
         "project.created",
-        currentUser,
+        project.owner_id,
         "project.created",
         project_helper(created_project)
     )
@@ -229,9 +238,9 @@ def list_projects():
     return [project_helper(p) for p in projects]
 
 #list projects belongin to the current user
-@app.get("/projects/user", response_model=list[Project],status_code=200)
-def list_users_projects():
-    projects = projects_collection.find({"owner_id": ObjectId(currentUser)})
+@app.get("/projects/{user_id}", response_model=list[Project],status_code=200)
+def list_users_projects(user_id: str):
+    projects = projects_collection.find({"owner_id": user_id})
     return [project_helper(p) for p in projects]
 
 #delete a project and all its entries
@@ -241,11 +250,11 @@ def delete_project_and_entries(project_id: str):
        return {"status": "success", "message": "Project and all its entries deleted"} 
     
 
-@app.delete("/user/projects",status_code=200)
-def delete_users_projects():
+@app.delete("/user/projects/{user_id}",status_code=200)
+def delete_users_projects(user_id: str):
 
 #list projects belongin to the current user
-    projects = projects_collection.find({"owner_id": ObjectId(currentUser)})
+    projects = projects_collection.find({"owner_id": ObjectId(user_id)})
     for p in projects:
         delete_project_and_entries_helper(str(p["_id"]))
 
