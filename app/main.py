@@ -1,4 +1,5 @@
 import os
+import asyncio
 import aio_pika
 from fastapi import FastAPI, HTTPException
 from datetime import datetime
@@ -26,6 +27,20 @@ async def get_exchange():
     ch = await conn.channel()
     ex = await ch.declare_exchange(EXCHANGE_NAME, aio_pika.ExchangeType.TOPIC)
     return conn, ch, ex
+
+
+@app.on_event("startup")
+async def start_consumer_task():
+    """Kick off the RabbitMQ consumer when the app starts."""
+    app.state.consumer_task = asyncio.create_task(consumer.consume())
+
+
+@app.on_event("shutdown")
+async def stop_consumer_task():
+    """Cancel the consumer task gracefully on shutdown."""
+    task = getattr(app.state, "consumer_task", None)
+    if task:
+        task.cancel()
 
 #******************************entries endpoints****************************************
 #Get entry by id
