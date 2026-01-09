@@ -2,7 +2,8 @@ import pytest
 
 example_project = {
     "name": "Test Project",
-    "description": "A test project"
+    "description": "A test project",
+    "owner_id": "691c8bf8d691e46d00068bf3"
 }
 
 def test_create_project(client):
@@ -20,7 +21,8 @@ def test_list_projects(client):
 
 def test_list_user_projects(client):
     client.put("/projects/", json=example_project)
-    response = client.get("/projects/user")
+    user_id = "691c8bf8d691e46d00068bf3"
+    response = client.get(f"/projects/user/{user_id}")
 
     assert response.status_code == 200
     assert len(response.json()) >= 1
@@ -35,5 +37,6 @@ def test_delete_project(client):
 
 def test_delete_user_projects(client):
     client.put("/projects/", json=example_project)
-    response = client.delete("/user/projects")
+    user_id = "691c8bf8d691e46d00068bf3"
+    response = client.delete(f"/user/projects/{user_id}")
     assert response.status_code == 200

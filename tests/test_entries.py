@@ -8,7 +8,8 @@ from app import configurations
 #project dictionary
 example_project = {
     "name": "Test Project",
-    "description": "A test project for mongomock"
+    "description": "A test project for mongomock",
+    "owner_id": "691c8bf8d691e46d00068bf3"
 }
 
 def test_create_entry_with_project(client):
@@ -79,8 +80,9 @@ def test_list_entries(client):
     entry_data = {"name": "Test Entry", "project_group_id": project_id}
     client.put("/entries/", json=entry_data)
     
-    #list all the entries
-    list_response = client.get("/entries/")
+    #list all the entries for the user
+    user_id = "691c8bf8d691e46d00068bf3"
+    list_response = client.get(f"/entries/{user_id}")
     assert list_response.status_code == 200
     assert len(list_response.json()) >= 1
 
