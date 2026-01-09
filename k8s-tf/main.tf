@@ -49,7 +49,7 @@ resource "kubernetes_deployment" "nginx" {
   }
 
   spec {
-    replicas = 2
+    replicas = var.replicas
     selector {
       match_labels = {
         App = "TTA-Track-app"
@@ -67,7 +67,7 @@ resource "kubernetes_deployment" "nginx" {
           name  = "ttatrackcontainer"
 
           port {
-            container_port = 8001
+            container_port = 8002
           }
 
           resources {
@@ -95,8 +95,8 @@ resource "kubernetes_service" "nginx" {
       App = kubernetes_deployment.nginx.spec.0.template.0.metadata[0].labels.App
     }
     port {
-      port        = 8001
-      target_port = 8001
+      port        = 8002
+      target_port = 8002
     }
 
     type = "LoadBalancer"
