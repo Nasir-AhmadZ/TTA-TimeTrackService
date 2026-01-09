@@ -21,4 +21,4 @@ stop:
 	fi
 
 test:
-	python -m pytest -q
+	python -m pytest --cov=app --cov-fail-under=68 tests/
