@@ -4,16 +4,12 @@ import aiormq
 import asyncio
 import json
 import os
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
 QUEUE_NAME = os.getenv("QUEUE_NAME", "user_events_queue")
-
-
-#currentUser = "691c8bf8d691e46d00068bf3" # default user id as string
 
 if not RABBITMQ_URL:
     raise RuntimeError("RABBITMQ_URL is not set. Export it or add it to a .env file.")
