@@ -1,15 +1,3 @@
-
-# helper function to serialize MongoDB documents
-# def entry_helper(entry) -> dict:
-#     return {
-#         "id": str(entry["_id"]),
-#         "project_group_id": str(entry["project_group_id"]),
-#         "name": entry["name"],
-#         "starttime": entry["starttime"],
-#         "endtime": entry.get("endtime"),
-#         "duration": entry.get("duration"),
-#     }
-
 def entry_helper(entry) -> dict:
     return {
         "id": str(entry["_id"]),

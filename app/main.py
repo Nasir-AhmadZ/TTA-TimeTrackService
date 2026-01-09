@@ -14,7 +14,6 @@ from .configurations import db, entries_collection, projects_collection
 from fastapi.middleware.cors import CORSMiddleware
 from . import consumer
 app = FastAPI(title="Time Tracker API")
-#currentUser = "691c8bf8d691e46d00068bf3"
 
 from .rabbitmq_publisher import get_rabbitmq_publisher
 
