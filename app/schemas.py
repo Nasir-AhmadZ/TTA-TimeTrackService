@@ -32,6 +32,7 @@ class Entry(BaseModel):
 class ProjectCreate(BaseModel):
     name: str = Field(..., example="Serial Link"),
     description: str = Field(..., example="My main project")
+    owner_id: str = Field(..., example="691cc7113ddac7733853998b")
 
 class Project(BaseModel):
     id: MongoId

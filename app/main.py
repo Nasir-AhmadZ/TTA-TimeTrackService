@@ -114,7 +114,7 @@ async def start_entry(entry: EntryStart):
     publisher = get_rabbitmq_publisher()
     publisher.createNotification(
         "entry.running",
-        consumer.currentUser,
+        project["owner_id"],
         "entry.running",
         entry_helper(created_entry)
     )
@@ -132,6 +132,21 @@ async def end_entry(entry_id: str):
     if entry.get("endtime") is not None:
         raise HTTPException(status_code=400, detail="Entry already ended")
     
+    project_id = entry.get("project_group_id")
+    if not project_id:
+        raise HTTPException(status_code=400, detail="Entry missing project_group_id")
+
+    if isinstance(project_id, str):
+        if not ObjectId.is_valid(project_id):
+            raise HTTPException(status_code=400, detail="Invalid project id on entry")
+        project_id = ObjectId(project_id)
+
+    project = projects_collection.find_one({"_id": project_id}, {"owner_id": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found for this entry")
+
+    owner_id = project.get("owner_id")
+    
     now = datetime.now()
     starttime = entry["starttime"]
     duration_seconds = int((now - starttime).total_seconds())
@@ -147,7 +162,7 @@ async def end_entry(entry_id: str):
     publisher = get_rabbitmq_publisher()
     publisher.createNotification(
         "entry.completed",
-        consumer.currentUser,
+        owner_id,
         "entry.completed",
         entry_helper(updated_entry)
     )
@@ -161,6 +176,21 @@ async def update_entry(entry_id: str, updatedEntry: EntryUpdate):
     entry = entries_collection.find_one({"_id": ObjectId(entry_id)})
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
+
+    project_id = entry.get("project_group_id")
+    if not project_id:
+        raise HTTPException(status_code=400, detail="Entry missing project_group_id")
+
+    if isinstance(project_id, str):
+        if not ObjectId.is_valid(project_id):
+            raise HTTPException(status_code=400, detail="Invalid project id on entry")
+        project_id = ObjectId(project_id)
+
+    project = projects_collection.find_one({"_id": project_id}, {"owner_id": 1})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found for this entry")
+
+    owner_id = project.get("owner_id")
     
     # prepare update data, only include set fields
     update_data = {k: v for k, v in updatedEntry.dict(exclude_unset=True).items() if v is not None}
@@ -186,7 +216,7 @@ async def update_entry(entry_id: str, updatedEntry: EntryUpdate):
         publisher = get_rabbitmq_publisher()
         publisher.createNotification(    
             "entry.updated",
-            consumer.currentUser,
+            owner_id,
             "entry.updated",
             entry_helper(updated_entry)
         )
@@ -196,10 +226,19 @@ async def update_entry(entry_id: str, updatedEntry: EntryUpdate):
     return entry_helper(updated_entry)
 
 # List all entries
-@app.get("/entries/", response_model=list[Entry], status_code=200)
-def list_entries():
-    entries = entries_collection.find()
-    return [entry_helper(e) for e in entries]
+@app.get("/entries/{user_id}", response_model=list[Entry], status_code=200)
+def list_entries(user_id: str):
+    projects = projects_collection.find({"owner_id": user_id})
+
+    all_entries = []
+
+    for p in projects:
+        entries = entries_collection.find(
+            {"project_group_id": p["_id"]}
+        )
+        all_entries.extend(entry_helper(e) for e in entries)
+
+    return all_entries
 
 #list entries belongin to a project
 @app.get("/entries/project/{project_id}", response_model=list[Entry],status_code=200)
@@ -232,7 +271,7 @@ async def create_project(project: ProjectCreate):
     project_dict = {
         "name": project.name,
         "description": project.description,
-        "owner_id": ObjectId(consumer.currentUser)
+        "owner_id": project.owner_id
     }
     
     result = projects_collection.insert_one(project_dict)
@@ -244,7 +283,7 @@ async def create_project(project: ProjectCreate):
     publisher = get_rabbitmq_publisher()
     publisher.createNotification(
         "project.created",
-        consumer.currentUser,
+        "project.owner_id",
         "project.created",
         project_helper(created_project)
     )
@@ -258,9 +297,9 @@ def list_projects():
     return [project_helper(p) for p in projects]
 
 #list projects belongin to the current user
-@app.get("/projects/user", response_model=list[Project],status_code=200)
-def list_users_projects():
-    projects = projects_collection.find({"owner_id": ObjectId(consumer.currentUser)})
+@app.get("/projects/user/{user_id}", response_model=list[Project],status_code=200)
+def list_users_projects(user_id: str):
+    projects = projects_collection.find({"owner_id": user_id})
     return [project_helper(p) for p in projects]
 
 #delete a project and all its entries
@@ -270,11 +309,11 @@ def delete_project_and_entries(project_id: str):
        return {"status": "success", "message": "Project and all its entries deleted"} 
     
 
-@app.delete("/user/projects",status_code=200)
-def delete_users_projects():
+@app.delete("/user/projects/{user_id}",status_code=200)
+def delete_users_projects(user_id: str):
 
 #list projects belongin to the current user
-    projects = projects_collection.find({"owner_id": ObjectId(consumer.currentUser)})
+    projects = projects_collection.find({"owner_id": user_id})
     for p in projects:
         delete_project_and_entries_helper(str(p["_id"]))
 
